@@ -6,10 +6,11 @@ Project Description
 
 ### Todo
 
-- [ ] write a good readme  
+- [ ] serialize the encoding tree  
 
 ### In Progress
 
+- [ ] write a good readme  
 
 ### Done ✓
 
