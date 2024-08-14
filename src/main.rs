@@ -1,25 +1,28 @@
-use std::fs;
+use std::{fs, io::Read};
 
 use frequency_tree_compression::EncodingTree;
 
 
-fn bytes_repr_for_bits(count: usize) -> usize {
-    count / 8 + count % 8
-} 
-
-
 fn main() {
 
-    let text = fs::read_to_string("filo.txt").unwrap();
 
-    let (encoder, encoded) = EncodingTree::encode(text.chars());
+    // let text = fs::read_to_string("test_data/text.txt").unwrap();
 
-    let decoded: String = encoder.decode(&encoded).unwrap().into_iter().collect();
+    // let (encoder, encoded) = EncodingTree::encode(text.chars());
 
-    assert_eq!(text, decoded);
+    // let bytes: Vec<u8> = encoded.bytes().map(|res| res.unwrap()).collect();
 
-    let compressed_size = bytes_repr_for_bits(encoded.len());
-    println!("Original size: {} bytes\nCompressed size: {} bytes\nCompression ratio: {}%", text.len(), compressed_size, (compressed_size as f64 / text.len() as f64 * 100.0) as i32);
+    // // println!("Bytes: {:?}", bytes)
+
+    // let bits = bytes.view_bits::<Lsb0>();
+
+    // let decoded: String = encoder.decode(bits).unwrap().into_iter().collect();
+
+    // assert_eq!(text, decoded);
+
+    // let compressed_size = bytes_repr_for_bits(encoded.len());
+    // println!("Original size: {} bytes\nCompressed size: {} bytes\nCompression ratio: {}%", text.len(), compressed_size, (compressed_size as f64 / text.len() as f64 * 100.0) as i32);
+
 
 }
 

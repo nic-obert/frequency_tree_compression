@@ -6,6 +6,7 @@ Project Description
 
 ### Todo
 
+- [ ] make the bitvec into its own crate  
 - [ ] save and load to a file. there may be padding problems  
 - [ ] write a good readme  
 
