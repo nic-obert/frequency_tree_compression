@@ -1,9 +1,8 @@
-mod bitvec;
 
 use std::{collections::HashMap, mem};
 use std::hash::Hash;
 
-use bitvec::{least_bytes_repr_for_bits, BitVec, BitView};
+use bitvec_padded::{least_bytes_repr_for_bits, BitVec, BitView};
 
 
 #[derive(Debug)]
@@ -129,6 +128,7 @@ impl Encoding {
     }
 
 
+    #[allow(dead_code)]
     pub fn iter_bits(&self) -> impl Iterator<Item = bool> + '_ {
         (0..self.meaningful)
             .rev()

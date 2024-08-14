@@ -6,7 +6,6 @@ Project Description
 
 ### Todo
 
-- [ ] make the bitvec into its own crate  
 - [ ] write a good readme  
 
 ### In Progress
@@ -14,6 +13,7 @@ Project Description
 
 ### Done ✓
 
+- [x] make the bitvec into its own crate  
 - [x] save and load to a file. there may be padding problems  
 - [x] refactor and make into a library  
 - [x] make the encoder generic over the encoded type  

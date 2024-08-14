@@ -3,6 +3,12 @@
 version = 3
 
 [[package]]
+name = "bitvec_padded"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6174ab1815c3f7af8c63be50e3a5a2f332926ce2c43c54982a3a5681533d93c"
+
+[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -18,6 +24,7 @@ checksum = "baf1de4339761588bc0619e3cbc0120ee582ebb74b53b4efbf79117bd2da40fd"
 name = "frequency_tree_compression"
 version = "0.1.0"
 dependencies = [
+ "bitvec_padded",
  "rand",
 ]
 
