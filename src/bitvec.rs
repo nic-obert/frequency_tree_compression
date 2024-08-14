@@ -1,5 +1,6 @@
 
 
+#[derive(Debug, PartialEq)]
 pub struct BitVec {
 
     /// The actual raw bits
@@ -119,6 +120,29 @@ impl BitVec {
     pub fn to_bool_slice(&self) -> Box<[bool]>{
         self.iter_bits()
             .collect()
+    }
+
+
+    pub fn serialize(&self) -> Box<[u8]> {
+        
+        let mut buf = Vec::with_capacity(1 + self.least_len_bytes());
+
+        buf.push(self.last_byte_padding);
+
+        buf.extend_from_slice(&self.raw_data);
+
+        buf.into_boxed_slice()
+    }
+
+
+    pub fn deserialize(input: &[u8]) -> Self {
+
+        let last_byte_padding = input[0];
+
+        Self {
+            raw_data: input[1..].to_vec(),
+            last_byte_padding
+        }
     }
 
 
@@ -260,6 +284,21 @@ mod tests {
         va.extend_from_bits(&vb.as_bit_view());
 
         assert_eq!(*va.to_bool_slice(), c);
+    }
+
+
+    #[test]
+    fn check_serde() {
+
+        let bools = [true, false, false, true, false, true, false, false, false, false, true];
+
+        let v = BitVec::from_bool_slice(&bools);
+
+        let ser = v.serialize();
+
+        let des = BitVec::deserialize(&ser);
+
+        assert_eq!(v, des);
     }
 
 }
