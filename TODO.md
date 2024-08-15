@@ -10,11 +10,11 @@ Project Description
 
 ### In Progress
 
-- [ ] serialize the encoding tree  
-- [ ] write a good readme  
 
 ### Done ✓
 
+- [x] write a good readme  
+- [x] serialize the encoding tree  
 - [x] make the bitvec into its own crate  
 - [x] save and load to a file. there may be padding problems  
 - [x] refactor and make into a library  

@@ -5,6 +5,7 @@ It analyzes the specific input data to construct a binary tree encoder that repr
 
 - [Frequency tree lossless compression](#frequency-tree-lossless-compression)
 - [Basic usage](#basic-usage)
+  - [Compressing and decompressing text](#compressing-and-decompressing-text)
 - [How it works](#how-it-works)
   - [Generating the encoder](#generating-the-encoder)
   - [Encoding data](#encoding-data)
@@ -20,7 +21,33 @@ It analyzes the specific input data to construct a binary tree encoder that repr
 
 # Basic usage
 
-TODO
+## Compressing and decompressing text
+
+Compress a text file
+
+```rust
+let original_text = fs::read_to_string("test_data/lorem.txt")
+    .unwrap_or_else(|err| panic!("Could not open file: {}", err));
+
+let compressed = compress(original_text.chars());
+
+fs::write("test_data/lorem.txt.compressed", compressed)
+    .unwrap_or_else(|err| panic!("Could not write to file: {}", err));
+```
+
+Decompress into a text file
+
+```rust
+let compressed = fs::read("test_data/lorem.txt.compressed")
+    .unwrap_or_else(|err| panic!("Could not read file {}", err));
+
+let decompressed = decompress::<char>(&compressed)
+    .unwrap_or_else(|err| panic!("Could not decompress data {:?}", err));
+
+let decompressed_text: String = decompressed.iter().collect();
+
+assert_eq!(original_text, decompressed_text);
+```
 
 # How it works
 
