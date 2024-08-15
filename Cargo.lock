@@ -4,9 +4,9 @@ version = 3
 
 [[package]]
 name = "bitvec_padded"
-version = "0.1.1"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7ec11249568d1a2aa3093870ae55d07f8aa5ac245a757c2a498eb2a7b07c573c"
+checksum = "e29b94729e07faa22e2e1f363b6ffd57cd9635574a38b825a82f738299256916"
 
 [[package]]
 name = "byteorder"

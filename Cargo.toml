@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bitvec_padded = "0.1.1"
+bitvec_padded = "0.1.2"
 
 [dev-dependencies]
 rand = "0.8.4"

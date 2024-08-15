@@ -1,3 +1,5 @@
+#![allow(incomplete_features)]
+#![feature(generic_const_exprs)]
 
 use std::{collections::HashMap, mem};
 use std::hash::Hash;
@@ -5,17 +7,67 @@ use std::hash::Hash;
 use bitvec_padded::{least_bytes_repr_for_bits, BitVec, BitView};
 
 
-#[derive(Debug)]
-enum Node<T> {
+#[derive(Debug, Clone, Copy)]
+pub enum DecompressionError {
 
-    Parent { count: usize, left: Box<Node<T>>, right: Box<Node<T>> },
-    Leaf { count: usize, value: T },
+    InvalidBitCode,
+    InvalidDecodingTree,
+    BitCodeDecodingError (DecodingError)
 
 }
 
-impl<T> Node<T>
+
+#[repr(u8)]
+enum SerialSpecifier {
+
+    Leaf,
+    Parent,
+
+}
+
+impl TryFrom<u8> for SerialSpecifier {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value > Self::Parent as u8 {
+            Err(())
+        } else {
+            Ok( unsafe { 
+                mem::transmute(value)
+            })
+        }
+    }
+}
+
+
+#[derive(Debug)]
+enum Node<U> {
+
+    Parent { count: usize, left: Box<Node<U>>, right: Box<Node<U>> },
+    Leaf { count: usize, value: U },
+
+}
+
+impl<U> PartialEq for Node<U>
 where
-    T: PartialEq + Clone
+    U: Clone + PartialEq
+{
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+
+            (Self::Parent { left: l_left, right: l_right, .. }, Self::Parent { left: r_left, right: r_right, .. }) => l_left == r_left && l_right == r_right,
+            
+            (Self::Leaf { value: l_value, .. }, Self::Leaf { value: r_value, .. }) => l_value == r_value,
+            
+            _ => false,
+        }
+    }
+}
+
+impl<U> Node<U>
+where
+    U: Clone + PartialEq,
+    [(); mem::size_of::<U>()]:
 {
 
     pub const fn count(&self) -> usize {
@@ -27,7 +79,7 @@ where
     }
 
 
-    pub fn insert(&mut self, freq: usize, insert_value: T) {
+    pub fn insert(&mut self, freq: usize, insert_value: U) {
 
         match self {
             
@@ -55,7 +107,7 @@ where
     }
 
 
-    pub fn encode(&self, encoding: Encoding, target: T) -> Option<Encoding> {
+    pub fn encode(&self, encoding: Encoding, target: U) -> Option<Encoding> {
 
         match self {
 
@@ -79,6 +131,75 @@ where
         }
     }
 
+
+    pub fn deserialize(buf: &[u8]) -> Result<(Self, usize), ()> {
+
+        match SerialSpecifier::try_from(*buf.get(0).ok_or(())?)? {
+            
+            SerialSpecifier::Leaf => {
+
+                if buf.len() < 1 + mem::size_of::<U>() {
+                    return Err(());
+                }
+
+                let value = unsafe {
+                    &*(&buf[1..1 + mem::size_of::<U>()] as *const _ as *const [u8; mem::size_of::<U>()]) as &[u8; mem::size_of::<U>()]
+                };
+
+                Ok((
+                    Self::Leaf { 
+                        count: 0,
+                        value: unsafe {
+                            mem::transmute::<&[u8; mem::size_of::<U>()], &U>(value).clone()
+                        }
+                    },
+                    1 + mem::size_of::<U>()
+                ))
+            },
+            
+            SerialSpecifier::Parent => {
+
+                let (left, read1) = Self::deserialize(&buf[1..])?;
+                let (right, read2) = Self::deserialize(&buf[1 + read1..])?;
+
+                Ok((
+                    Self::Parent {
+                        count: 0,
+                        left: Box::new(left),
+                        right: Box::new(right)
+                    },
+                    1 + read1 + read2
+                ))
+            },
+
+        }
+
+    }
+
+
+    pub fn serialize(&self, buf: &mut Vec<u8>) {
+
+        match self {
+
+            Node::Parent { left, right, .. } => {
+
+                buf.push(SerialSpecifier::Parent as u8);
+
+                left.serialize(buf);
+                right.serialize(buf);
+            },
+
+            Node::Leaf { value, .. } => {
+
+                buf.push(SerialSpecifier::Leaf as u8);
+
+                buf.extend_from_slice( unsafe {
+                    mem::transmute::<&U, &[u8; mem::size_of::<U>()]>(value)
+                });
+            },
+        }
+    }
+
 }
 
 
@@ -96,6 +217,7 @@ struct Encoding {
 
     /// The actual encoded value
     bits: u64,
+
     /// How many bits have meaning
     meaningful: u8
 
@@ -103,6 +225,7 @@ struct Encoding {
 
 impl Encoding {
 
+    /// Create a new `Encoding` object with all bits initialized to zero
     pub const fn new_zeroed() -> Self {
         Self {
             bits: 0,
@@ -146,36 +269,137 @@ impl Encoding {
 }
 
 
-#[derive(Debug)]
-pub struct EncodingTree<T> {
+#[derive(Debug, PartialEq)]
+pub struct DecodingTree<U: Clone> {
 
-    root: Option<Node<T>>
+    root: Node<U>
 
 }
 
-impl<T> EncodingTree<T>
+impl<U> DecodingTree<U>
 where
-    T: PartialEq + Clone + Eq + Hash
+    U: Clone + PartialEq,
+    [(); mem::size_of::<U>()]:
+{
+
+    /// Decode the data unit represented by the given bit code
+    pub fn decode(&self, bitcode: &BitView) -> Result<Box<[U]>, DecodingError> {
+
+        let mut decoded = Vec::new();
+
+        let mut node = &self.root;
+
+        for bit in bitcode.iter_bits() {
+
+            if let Node::Parent { left, right, .. } = node {
+
+                let next_node = [left, right][bit as usize];
+                match next_node.as_ref() {
+
+                    Node::Parent { .. } => {
+                        node = next_node;
+                    },
+
+                    Node::Leaf { value, .. } => {
+                        decoded.push(value.clone());
+                        node = &self.root;
+                    },
+                }
+
+            } else {
+                unreachable!()
+            }
+        }
+
+        if let Node::Leaf { value, .. } = node {
+            decoded.push(value.clone());
+        } else if node as *const Node<U> != &self.root as *const Node<U> {
+            return Err(DecodingError::InvalidEncoding);
+        }
+
+        Ok(decoded.into_boxed_slice())
+    }
+
+
+    pub fn serialize(&self, buf: &mut Vec<u8>)
+    where
+        
+    {
+        self.root.serialize(buf);
+    }
+
+
+    pub fn deserialize(input: &[u8]) -> Result<(Self, usize), ()>
+    where 
+        [(); mem::size_of::<U>()]:
+    {
+
+        let (root, read) = Node::deserialize(input)?;
+
+        Ok((
+            Self {
+                root
+            },
+            read
+        ))
+    }
+
+}
+
+
+#[derive(Debug, PartialEq)]
+pub struct EncodingTree<U: Clone> {
+
+    /// Root node of the binary tree
+    root: Option<Node<U>>,
+
+    /// Total number of leaf nodes in the tree
+    leaf_count: usize,
+
+}
+
+impl<U> EncodingTree<U>
+where
+    U: Clone + Eq + Hash + PartialEq,
+    [(); mem::size_of::<U>()]:
 {
 
     const fn new() -> Self {
         Self {
-            root: None
+            root: None,
+            leaf_count: 0
         }
     }
 
 
-    fn add_value(&mut self, freq: usize, value: T) {
+    pub const fn leaf_node_count(&self) -> usize {
+        self.leaf_count
+    }
+
+
+    pub const fn parent_node_count(&self) -> usize {
+        self.leaf_count - (self.leaf_count > 1) as usize
+    }
+
+
+    pub const fn total_node_count(&self) -> usize {
+        self.leaf_node_count() + self.parent_node_count()
+    }
+
+
+    fn add_value(&mut self, freq: usize, value: U) {
 
         if let Some(root) = &mut self.root {
             root.insert(freq, value);
         } else {
             self.root = Some(Node::Leaf { count: freq, value });
         }
+
+        self.leaf_count += 1;
     }
 
 
-    fn encode_value(&self, value: T) -> Encoding {
+    fn encode_value(&self, value: U) -> Encoding {
         self.root.as_ref()
             .unwrap()
             .encode(Encoding::new_zeroed(), value)
@@ -183,7 +407,7 @@ where
         }
 
 
-    pub fn encode(data: impl Iterator<Item = T> + Clone) -> (Self, BitVec) {
+    pub fn encode(data: impl Iterator<Item = U> + Clone) -> (Self, BitVec) {
 
         let mut frequencies = value_frequencies(data.clone());
         sort_frequencies(&mut frequencies);
@@ -206,41 +430,12 @@ where
     }
 
 
-    pub fn decode(&self, encoding: &BitView) -> Result<Box<[T]>, DecodingError> {
-
-        let mut decoded = Vec::new();
-
-        let mut node = self.root.as_ref().unwrap();
-
-        for bit in encoding.iter_bits() {
-
-            if let Node::Parent { left, right, .. } = node {
-
-                let next_node = [left, right][bit as usize];
-                match next_node.as_ref() {
-
-                    Node::Parent { .. } => {
-                        node = next_node;
-                    },
-
-                    Node::Leaf { value, .. } => {
-                        decoded.push(value.clone());
-                        node = self.root.as_ref().unwrap();
-                    },
-                }
-
-            } else {
-                unreachable!()
-            }
-        }
-
-        if let Node::Leaf { value, .. } = node {
-            decoded.push(value.clone());
-        } else if node as *const Node<T> != self.root.as_ref().unwrap() as *const Node<T> {
-            return Err(DecodingError::InvalidEncoding);
-        }
-
-        Ok(decoded.into_boxed_slice())
+    /// Convert the `EncodingTree` into a `DecodingTree`
+    /// Return `None` if the tree is not initialized
+    pub fn into_decoder(self) -> Option<DecodingTree<U>> {
+        Some(DecodingTree {
+            root: self.root?
+        })
     }
 
 }
@@ -251,12 +446,13 @@ fn sort_frequencies<T>(frequencies: &mut [(T, usize)]) {
 }
 
 
-fn value_frequencies<T>(data: impl Iterator<Item = T>) -> Box<[(T, usize)]>
+fn value_frequencies<U, I>(data: I) -> Box<[(U, usize)]>
 where 
-    T: Eq + Hash
+    U: Eq + Hash,
+    I: Iterator<Item = U>
 {
 
-    let mut frequencies: HashMap<T, usize> = HashMap::new();
+    let mut frequencies: HashMap<U, usize> = HashMap::new();
 
     for ch in data {
 
@@ -266,6 +462,46 @@ where
     }
 
     frequencies.drain().collect()
+}
+
+
+pub fn compress<U, I>(input: I) -> Box<[u8]> 
+where 
+    U: Clone + Eq + Hash,
+    I: Iterator<Item = U> + Clone,
+    [(); mem::size_of::<U>()]:
+{
+
+    // TODO: return a byte reader or something else that is more generic
+    
+    let (encoder, bitcode) = EncodingTree::encode(input);
+
+    let tree_repr_size = (1 + mem::size_of::<U>()) * encoder.leaf_node_count() + encoder.parent_node_count();
+    let bitcode_repr_size = 1 + bitcode.least_len_bytes();
+
+    let mut res = Vec::with_capacity(tree_repr_size + bitcode_repr_size);
+
+    encoder.into_decoder().unwrap().serialize(&mut res);
+
+    bitcode.serialize(&mut res);
+
+    res.into_boxed_slice()
+}
+
+
+pub fn decompress<U>(input: &[u8]) -> Result<Box<[U]>, DecompressionError>
+where 
+    U: Clone + PartialEq,
+    [(); mem::size_of::<U>()]:
+{
+    
+    let (decoder, read) = DecodingTree::deserialize(input).map_err(|_| DecompressionError::InvalidDecodingTree)?;
+
+    let bitcode = BitVec::deserialize(&input[read..]).map_err(|_| DecompressionError::InvalidBitCode)?;
+
+    let decoded = decoder.decode(&bitcode.as_bit_view()).map_err(|e| DecompressionError::BitCodeDecodingError(e))?;
+
+    Ok(decoded)
 }
 
 
@@ -338,9 +574,9 @@ mod tests {
 
         let (encoder, compressed) = EncodingTree::encode(text.chars());
 
-        let decoded = encoder.decode(&compressed.as_bit_view())
+        let decoded = encoder.into_decoder().unwrap().decode(&compressed.as_bit_view())
             .unwrap()
-            .into_iter()
+            .iter()
             .collect::<String>();
 
         assert_eq!(text, decoded);
@@ -355,12 +591,37 @@ mod tests {
 
             let (encoder, compressed) = EncodingTree::encode(text.chars());
 
-            let decoded = encoder.decode(&compressed.as_bit_view())
+            let decoder = encoder.into_decoder().unwrap();
+
+            let decoded = decoder.decode(&compressed.as_bit_view())
                 .unwrap()
-                .into_iter()
+                .iter()
                 .collect::<String>();
 
             assert_eq!(text, decoded);
+
+            let mut ser = Vec::new();
+            decoder.serialize(&mut ser);
+
+            let des = DecodingTree::<char>::deserialize(&ser).unwrap().0;
+
+            assert_eq!(decoder, des);
+        }
+    }
+
+
+    #[test]
+    fn check_compression_decompression() {
+
+        for text in get_test_files() {
+
+            let compressed = compress(text.chars());
+
+            let decompressed = decompress::<char>(&compressed).unwrap();
+
+            let s: String = decompressed.iter().collect();
+
+            assert_eq!(text, s);
         }
     }
 

@@ -6,10 +6,11 @@ Project Description
 
 ### Todo
 
-- [ ] serialize the encoding tree  
+- [ ] make also into a basic command line tool  
 
 ### In Progress
 
+- [ ] serialize the encoding tree  
 - [ ] write a good readme  
 
 ### Done ✓
