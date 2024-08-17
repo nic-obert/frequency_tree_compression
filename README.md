@@ -31,14 +31,14 @@ let original_text = fs::read_to_string("test_data/lorem.txt")
 
 let compressed = compress(original_text.chars());
 
-fs::write("test_data/lorem.txt.compressed", compressed)
+fs::write("test_data/compressed/lorem.txt.compressed", compressed)
     .unwrap_or_else(|err| panic!("Could not write to file: {}", err));
 ```
 
-Decompress into a text file
+Decompress back into text
 
 ```rust
-let compressed = fs::read("test_data/lorem.txt.compressed")
+let compressed = fs::read("test_data/compressed/lorem.txt.compressed")
     .unwrap_or_else(|err| panic!("Could not read file {}", err));
 
 let decompressed = decompress::<char>(&compressed)

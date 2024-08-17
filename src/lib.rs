@@ -1,6 +1,8 @@
 #![allow(incomplete_features)]
 #![feature(generic_const_exprs)]
 
+
+use core::slice;
 use std::{collections::HashMap, mem};
 use std::hash::Hash;
 
@@ -11,7 +13,7 @@ use bitvec_padded::{least_bytes_repr_for_bits, BitVec, BitView};
 pub enum DecompressionError {
 
     InvalidBitCode,
-    InvalidDecodingTree,
+    InvalidDecodingTree (NodeDeserializationError),
     BitCodeDecodingError (DecodingError)
 
 }
@@ -26,11 +28,11 @@ enum SerialSpecifier {
 }
 
 impl TryFrom<u8> for SerialSpecifier {
-    type Error = ();
+    type Error = NodeDeserializationError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         if value > Self::Parent as u8 {
-            Err(())
+            Err(NodeDeserializationError::InvalidNodeTypeSpecifier (value))
         } else {
             Ok( unsafe { 
                 mem::transmute(value)
@@ -132,14 +134,17 @@ where
     }
 
 
-    pub fn deserialize(buf: &[u8]) -> Result<(Self, usize), ()> {
+    pub fn deserialize(buf: &[u8]) -> Result<(Self, usize), NodeDeserializationError> {
 
-        match SerialSpecifier::try_from(*buf.get(0).ok_or(())?)? {
+        match SerialSpecifier::try_from(
+            *buf.get(0)
+                .ok_or(NodeDeserializationError::MissingNodeTypeSpecifier)?
+        )? {
             
             SerialSpecifier::Leaf => {
 
                 if buf.len() < 1 + mem::size_of::<U>() {
-                    return Err(());
+                    return Err(NodeDeserializationError::MissingNodeUnitData);
                 }
 
                 let value = unsafe {
@@ -193,9 +198,14 @@ where
 
                 buf.push(SerialSpecifier::Leaf as u8);
 
-                buf.extend_from_slice( unsafe {
-                    mem::transmute::<&U, &[u8; mem::size_of::<U>()]>(value)
-                });
+                let bytes = unsafe {
+                    slice::from_raw_parts(
+                        value as *const U as *const u8,
+                        mem::size_of::<U>()
+                    )
+                };
+
+                buf.extend_from_slice(bytes);
             },
         }
     }
@@ -321,15 +331,13 @@ where
     }
 
 
-    pub fn serialize(&self, buf: &mut Vec<u8>)
-    where
-        
-    {
+    pub fn serialize(&self, buf: &mut Vec<u8>) {
+
         self.root.serialize(buf);
     }
 
 
-    pub fn deserialize(input: &[u8]) -> Result<(Self, usize), ()>
+    pub fn deserialize(input: &[u8]) -> Result<(Self, usize), NodeDeserializationError>
     where 
         [(); mem::size_of::<U>()]:
     {
@@ -343,6 +351,16 @@ where
             read
         ))
     }
+
+}
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum NodeDeserializationError {
+
+    MissingNodeTypeSpecifier,
+    InvalidNodeTypeSpecifier (u8),
+    MissingNodeUnitData
 
 }
 
@@ -454,9 +472,9 @@ where
 
     let mut frequencies: HashMap<U, usize> = HashMap::new();
 
-    for ch in data {
+    for unit in data {
 
-        frequencies.entry(ch)
+        frequencies.entry(unit)
             .and_modify(|counter| *counter += 1)
             .or_insert(1);
     }
@@ -465,15 +483,12 @@ where
 }
 
 
-pub fn compress<U, I>(input: I) -> Box<[u8]> 
+pub fn compress<U>(input: impl Iterator<Item = U> + Clone) -> Box<[u8]> 
 where 
     U: Clone + Eq + Hash,
-    I: Iterator<Item = U> + Clone,
     [(); mem::size_of::<U>()]:
 {
 
-    // TODO: return a byte reader or something else that is more generic
-    
     let (encoder, bitcode) = EncodingTree::encode(input);
 
     let tree_repr_size = (1 + mem::size_of::<U>()) * encoder.leaf_node_count() + encoder.parent_node_count();
@@ -495,7 +510,7 @@ where
     [(); mem::size_of::<U>()]:
 {
     
-    let (decoder, read) = DecodingTree::deserialize(input).map_err(|_| DecompressionError::InvalidDecodingTree)?;
+    let (decoder, read) = DecodingTree::deserialize(input).map_err(|e| DecompressionError::InvalidDecodingTree(e))?;
 
     let bitcode = BitVec::deserialize(&input[read..]).map_err(|_| DecompressionError::InvalidBitCode)?;
 
@@ -532,12 +547,21 @@ mod tests {
         let dir = fs::read_dir(TEST_DATA_DIR)
             .unwrap_or_else(|e| panic!("Could not read test boards directory {TEST_DATA_DIR}:\n{e}"));
 
-        dir.map(|entry| {
+        dir.flat_map(|entry| {
 
             let entry = entry.as_ref()
                 .unwrap_or_else(|e| panic!("Could not read directory entry {:?}:\n{e}", entry));
 
-            load_text(&entry.path())
+            let meta = entry.metadata()
+                .unwrap_or_else(|e| panic!("Could not read metadata of entry {:?}:\n{e}", entry));
+
+            if meta.is_file() {
+                Some(
+                    load_text(&entry.path())
+                )
+            } else {
+                None
+            }
         })
     }
 
