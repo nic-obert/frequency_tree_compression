@@ -3,7 +3,8 @@
 
 
 use core::slice;
-use std::{collections::HashMap, mem};
+use std::mem;
+use std::collections::HashMap;
 use std::hash::Hash;
 
 use bitvec_padded::{least_bytes_repr_for_bits, BitVec, BitView};
@@ -34,7 +35,7 @@ impl TryFrom<u8> for SerialSpecifier {
         if value > Self::Parent as u8 {
             Err(NodeDeserializationError::InvalidNodeTypeSpecifier (value))
         } else {
-            Ok( unsafe { 
+            Ok( unsafe {
                 mem::transmute(value)
             })
         }
@@ -58,9 +59,9 @@ where
         match (self, other) {
 
             (Self::Parent { left: l_left, right: l_right, .. }, Self::Parent { left: r_left, right: r_right, .. }) => l_left == r_left && l_right == r_right,
-            
+
             (Self::Leaf { value: l_value, .. }, Self::Leaf { value: r_value, .. }) => l_value == r_value,
-            
+
             _ => false,
         }
     }
@@ -84,7 +85,7 @@ where
     pub fn insert(&mut self, freq: usize, insert_value: U) {
 
         match self {
-            
+
             Node::Parent { count, left, right } => {
 
                 if right.count() > left.count() {
@@ -140,7 +141,7 @@ where
             *buf.get(0)
                 .ok_or(NodeDeserializationError::MissingNodeTypeSpecifier)?
         )? {
-            
+
             SerialSpecifier::Leaf => {
 
                 if buf.len() < 1 + mem::size_of::<U>() {
@@ -152,7 +153,7 @@ where
                 };
 
                 Ok((
-                    Self::Leaf { 
+                    Self::Leaf {
                         count: 0,
                         value: unsafe {
                             mem::transmute::<&[u8; mem::size_of::<U>()], &U>(value).clone()
@@ -161,7 +162,7 @@ where
                     1 + mem::size_of::<U>()
                 ))
             },
-            
+
             SerialSpecifier::Parent => {
 
                 let (left, read1) = Self::deserialize(&buf[1..])?;
@@ -338,7 +339,7 @@ where
 
 
     pub fn deserialize(input: &[u8]) -> Result<(Self, usize), NodeDeserializationError>
-    where 
+    where
         [(); mem::size_of::<U>()]:
     {
 
@@ -422,7 +423,7 @@ where
             .unwrap()
             .encode(Encoding::new_zeroed(), value)
             .unwrap()
-        }
+    }
 
 
     pub fn encode(data: impl Iterator<Item = U> + Clone) -> (Self, BitVec) {
@@ -465,7 +466,7 @@ fn sort_frequencies<T>(frequencies: &mut [(T, usize)]) {
 
 
 fn value_frequencies<U, I>(data: I) -> Box<[(U, usize)]>
-where 
+where
     U: Eq + Hash,
     I: Iterator<Item = U>
 {
@@ -483,8 +484,8 @@ where
 }
 
 
-pub fn compress<U>(input: impl Iterator<Item = U> + Clone) -> Box<[u8]> 
-where 
+pub fn compress<U>(input: impl Iterator<Item = U> + Clone) -> Box<[u8]>
+where
     U: Clone + Eq + Hash,
     [(); mem::size_of::<U>()]:
 {
@@ -505,11 +506,11 @@ where
 
 
 pub fn decompress<U>(input: &[u8]) -> Result<Box<[U]>, DecompressionError>
-where 
+where
     U: Clone + PartialEq,
     [(); mem::size_of::<U>()]:
 {
-    
+
     let (decoder, read) = DecodingTree::deserialize(input).map_err(|e| DecompressionError::InvalidDecodingTree(e))?;
 
     let bitcode = BitVec::deserialize(&input[read..]).map_err(|_| DecompressionError::InvalidBitCode)?;
@@ -533,7 +534,7 @@ mod tests {
     const TEST_DATA_DIR: &'static str = "test_data";
 
 
-    fn load_text<P>(file_path: &P) -> String 
+    fn load_text<P>(file_path: &P) -> String
     where
         P: AsRef<Path> + ?Sized
     {
@@ -543,7 +544,7 @@ mod tests {
 
 
     fn get_test_files() -> impl Iterator<Item = String> {
-        
+
         let dir = fs::read_dir(TEST_DATA_DIR)
             .unwrap_or_else(|e| panic!("Could not read test boards directory {TEST_DATA_DIR}:\n{e}"));
 
@@ -582,10 +583,10 @@ mod tests {
                     enc = enc.step_right()
                 }
             }
-    
+
             let v = enc.as_bits();
             let expected = enc.iter_bits().collect::<Vec<bool>>();
-    
+
             assert_eq!(*v.to_bool_slice(), expected);
         }
     }
@@ -650,4 +651,3 @@ mod tests {
     }
 
 }
-
