@@ -14,4 +14,3 @@ fn main() {
         text.len() / 1024, compressed.len() / 1024, text.len() as f64 / compressed.len() as f64);
 
 }
-

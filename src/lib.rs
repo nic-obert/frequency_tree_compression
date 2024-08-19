@@ -154,7 +154,7 @@ where
 
                 Ok((
                     Self::Leaf {
-                        count: 0,
+                        count: 0, // The count won't be needed during decoding.
                         value: unsafe {
                             mem::transmute::<&[u8; mem::size_of::<U>()], &U>(value).clone()
                         }
@@ -170,7 +170,7 @@ where
 
                 Ok((
                     Self::Parent {
-                        count: 0,
+                        count: 0, // The count won't be needed during decoding.
                         left: Box::new(left),
                         right: Box::new(right)
                     },
@@ -185,6 +185,7 @@ where
 
     pub fn serialize(&self, buf: &mut Vec<u8>) {
 
+        // Don't include the count field in the serialized data because it won't be needed during decoding.
         match self {
 
             Node::Parent { left, right, .. } => {
